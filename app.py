@@ -10,28 +10,32 @@ st.title("iDeCo × 退職金 出口戦略シミュレーター")
 st.warning("【免責事項】本ツールは簡易的なシミュレーションであり、正確な税額や社会保険料、運用成果を保証するものではありません。実際の税務申告や投資判断は、必ず税理士などの専門家にご相談の上、ご自身の責任で行ってください。入力された資産データ等は一切保存・送信されません。")
 
 # --- UI: サイドバーでパラメータ設定 ---
-st.sidebar.header("1. 現金化のリミット")
-limit_age = st.sidebar.slider("現金化リミット年齢", 60, 75, 68)
+st.sidebar.header("1. iDeCo受取の完了期限")
+limit_age = st.sidebar.slider(
+    "受取完了リミット年齢", 
+    60, 75, 70,
+    help="iDeCoを何歳までに全額受け取り終えたいかを設定します（法令上の上限は75歳）。"
+)
 
 st.sidebar.header("2. 会社の退職金設定")
-comp_severance = st.sidebar.number_input("退職金見込み額 (円)", value=22000000, step=1000000)
-comp_start = st.sidebar.slider("入社時の年齢", 18, 50, 47)
-comp_end = st.sidebar.slider("退職時の年齢", 50, 75, 65)
+comp_severance = st.sidebar.number_input("退職金見込み額 (円)", value=15000000, step=1000000)
+comp_start = st.sidebar.slider("入社時の年齢", 18, 50, 22)
+comp_end = st.sidebar.slider("退職時の年齢", 50, 75, 60)
 
 st.sidebar.header("3. iDeCo設定")
-ideco_balance = st.sidebar.number_input("iDeCo元本 (円)", value=10000000, step=1000000)
-ideco_start = st.sidebar.slider("積立開始年齢", 20, 60, 52)
-ideco_end = st.sidebar.slider("拠出終了希望年齢", 60, 65, 65)
+ideco_balance = st.sidebar.number_input("iDeCo元本 (円)", value=5000000, step=1000000)
+ideco_start = st.sidebar.slider("積立開始年齢", 20, 60, 40)
+ideco_end = st.sidebar.slider("拠出終了希望年齢", 60, 65, 60)
 
 st.sidebar.header("4. iDeCoの運用設定")
 mean_rate_pct = st.sidebar.slider(
     "受取期間中のiDeCo想定運用年利 (%)", 
-    0.0, 10.0, 4.0, step=0.5,
+    0.0, 10.0, 3.0, step=0.5,
     help="受取を遅らせる据置期間や、年金受給中の残額にかかる想定運用利回りです。"
 )
 
 st.sidebar.header("5. その他の収入設定")
-public_pension = st.sidebar.number_input("公的年金見込み年額 (円)", value=2400000, step=100000)
+public_pension = st.sidebar.number_input("公的年金見込み年額 (円)", value=2000000, step=100000)
 wage_income = st.sidebar.number_input("退職後の給与等年額 (円)", value=0, step=100000)
 
 GAS_WEBHOOK_URL = ""
@@ -155,83 +159,4 @@ def run_evaluation(c_end, target_age, l_ratio, ann_len, mean_r):
         c_inc, c_res = calc_lump_taxes_detailed(comp_severance, c_ded)
         i_inc, i_res = calc_lump_taxes_detailed(ideco_lump, ideco_base_ded)
         l_inc, l_res = c_inc + i_inc, c_res + i_res
-        rule = f"iDeCo先行({diff_y}年差/重複除外)" if diff_y < 20 else "iDeCo先行(20年枠全開)"
-    else:
-        diff_abs = abs(diff_y)
-        c_inc, c_res = calc_lump_taxes_detailed(comp_severance, comp_base_ded)
-        i_ded = max(0, ideco_base_ded - overlap_ded) if diff_abs <= 4 else ideco_base_ded
-        i_inc, i_res = calc_lump_taxes_detailed(ideco_lump, i_ded)
-        l_inc, l_res = c_inc + i_inc, c_res + i_res
-        rule = f"会社先行({diff_abs}年差/重複除外)" if diff_abs <= 4 else f"会社先行({diff_abs}年差/★5年全開)"
-
-    a_recv, a_inc, a_res, a_nhi, a_care = eval_annuity_breakdown(ideco_ann, ann_len, mean_r, target_age, public_pension, wage_income)
-
-    total_gross = comp_severance + ideco_lump + a_recv
-    total_burden = l_inc + l_res + a_inc + a_res + a_nhi + a_care
-    total_net = total_gross - total_burden
-
-    return {
-        "受取開始年齢": target_age,
-        "一時金割合": f"{int(l_ratio * 100)}%",
-        "年金期間": f"{ann_len}年" if l_ratio < 1.0 else "-",
-        "総額面(万円)": round(total_gross / 10000, 1),
-        "生データ_総負担": total_burden,
-        "節税額(万円)": 0,
-        "総手取り(万円)": round(total_net / 10000, 1),
-        "手取り率(%)": round((total_net / total_gross) * 100, 2),
-        "総負担_累計(万円)": round(total_burden / 10000, 1),
-        "【一括】所得税(万)": round(l_inc / 10000, 1),
-        "【一括】住民税(万)": round(l_res / 10000, 1),
-        "【一括】社保(万)": 0.0,
-        "【年金累計】所得税(万)": round(a_inc / 10000, 1),
-        "【年金累計】住民税(万)": round(a_res / 10000, 1),
-        "【年金累計】国保(万)": round(a_nhi / 10000, 1),
-        "【年金累計】介護(万)": round(a_care / 10000, 1),
-        "適用ルール": rule
-    }
-
-# ==============================================================================
-# 実行ボタンと表示
-# ==============================================================================
-if st.button("最適解をシミュレーションする", type="primary"):
-    
-    if GAS_WEBHOOK_URL.startswith("http"):
-        try:
-            requests.post(GAS_WEBHOOK_URL, json={"action": "execute"}, timeout=2)
-        except:
-            pass
-
-    with st.spinner("全パターンの最適解を探索中..."):
-        mean_rate = mean_rate_pct / 100.0
-        plans = []
-        safe_limit_age = max(ideco_end, limit_age)
-
-        for age in range(ideco_end, safe_limit_age + 1):
-            for lr in [0.0, 0.25, 0.5, 0.75, 1.0]:
-                for dur in [5, 10, 15]:
-                    plans.append(run_evaluation(ideco_end, age, lr, dur, mean_rate))
-
-        df = pd.DataFrame(plans).drop_duplicates(subset=["受取開始年齢", "一時金割合", "年金期間", "総負担_累計(万円)"])
-        
-        max_burden_raw = df["生データ_総負担"].max()
-        df["節税額(万円)"] = round((max_burden_raw - df["生データ_総負担"]) / 10000, 1)
-
-        cols = [
-            "受取開始年齢", "一時金割合", "年金期間", "総額面(万円)", "節税額(万円)", "総手取り(万円)", "手取り率(%)", "総負担_累計(万円)", 
-            "【一括】所得税(万)", "【一括】住民税(万)", "【一括】社保(万)", 
-            "【年金累計】所得税(万)", "【年金累計】住民税(万)", "【年金累計】国保(万)", "【年金累計】介護(万)", "適用ルール"
-        ]
-
-        df_best_tax = df.sort_values(by="節税額(万円)", ascending=False).head(10).reset_index(drop=True)
-        df_best_tax.index += 1
-        
-        df_best_net = df.sort_values(by="総手取り(万円)", ascending=False).head(10).reset_index(drop=True)
-        df_best_net.index += 1
-
-        st.info("💡 ※税金・社会保険料および総手取り額は、受給期間（5年〜15年間）全体の**【トータル累計額】**を表示しています。")
-
-        st.subheader("🏆 【節税ベスト10】 (最悪ケースと比較して最も税金・社保を削減できた順)")
-        st.dataframe(df_best_tax[cols], use_container_width=True)
-
-        st.subheader("💰 【手取り額ベスト10】 (最終手元に残る金額が多い順：運用益込み)")
-        st.dataframe(df_best_net[cols], use_container_width=True)
+        rule = f"iDeCo
