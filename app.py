@@ -38,7 +38,7 @@ st.sidebar.header("5. その他の収入設定")
 public_pension = st.sidebar.number_input("公的年金見込み年額 (円)", value=2000000, step=100000)
 wage_income = st.sidebar.number_input("退職後の給与等年額 (円)", value=0, step=100000)
 
-GAS_WEBHOOK_URL = ""
+GAS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwYszAu2cYidY1kaYJvayfAhdFebVudJv7PxXmtwlLdhDdtsMEe2MPLgXGcpYQLyMdZCg/exec"
 
 # ==============================================================================
 # 計算ロジック
