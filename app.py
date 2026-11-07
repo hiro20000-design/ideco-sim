@@ -40,6 +40,15 @@ wage_income = st.sidebar.number_input("退職後の給与等年額 (円)", value
 
 GAS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwYszAu2cYidY1kaYJvayfAhdFebVudJv7PxXmtwlLdhDdtsMEe2MPLgXGcpYQLyMdZCg/exec"
 
+# --- 訪問カウント処理（ページを開いた瞬間に1回だけ実行） ---
+if "visited" not in st.session_state:
+    st.session_state.visited = True
+    if GAS_WEBHOOK_URL.startswith("http"):
+        try:
+            requests.post(GAS_WEBHOOK_URL, json={"action": "ページ訪問"}, timeout=2)
+        except:
+            pass
+
 # ==============================================================================
 # 計算ロジック
 # ==============================================================================
@@ -201,7 +210,7 @@ if st.button("最適解をシミュレーションする", type="primary"):
     
     if GAS_WEBHOOK_URL.startswith("http"):
         try:
-            requests.post(GAS_WEBHOOK_URL, json={"action": "execute"}, timeout=2)
+            requests.post(GAS_WEBHOOK_URL, json={"action": "試算実行"}, timeout=2)
         except:
             pass
 
