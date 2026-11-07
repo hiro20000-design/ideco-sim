@@ -159,4 +159,83 @@ def run_evaluation(c_end, target_age, l_ratio, ann_len, mean_r):
         c_inc, c_res = calc_lump_taxes_detailed(comp_severance, c_ded)
         i_inc, i_res = calc_lump_taxes_detailed(ideco_lump, ideco_base_ded)
         l_inc, l_res = c_inc + i_inc, c_res + i_res
-        rule = f"iDeCo
+        rule = f"iDeCo先行({diff_y}年差/重複除外)" if diff_y < 20 else "iDeCo先行(20年枠全開)"
+    else:
+        diff_abs = abs(diff_y)
+        c_inc, c_res = calc_lump_taxes_detailed(comp_severance, comp_base_ded)
+        i_ded = max(0, ideco_base_ded - overlap_ded) if diff_abs <= 4 else ideco_base_ded
+        i_inc, i_res = calc_lump_taxes_detailed(ideco_lump, i_ded)
+        l_inc, l_res = c_inc + i_inc, c_res + i_res
+        rule = f"会社先行({diff_abs}年差/重複除外)" if diff_abs <= 4 else f"会社先行({diff_abs}年差/★5年全開)"
+
+    a_recv, a_inc, a_res, a_nhi, a_care = eval_annuity_breakdown(ideco_ann, ann_len, mean_r, target_age, public_pension, wage_income)
+
+    total_gross = comp_severance + ideco_lump + a_recv
+    total_burden = l_inc + l_res + a_inc + a_res + a_nhi + a_care
+    total_net = total_gross - total_burden
+
+    return {
+        "受取開始年齢": target_age,
+        "一時金割合": f"{int(l_ratio * 100)}%",
+        "年金期間": f"{ann_len}年" if l_ratio < 1.0 else "-",
+        "総額面(万円)": round(total_gross / 10000, 1),
+        "手取り率(%)": round((total_net / total_gross) * 100, 2),
+        "総手取り(万円)": round(total_net / 10000, 1),
+        "節税額(万円)": 0,
+        "総負担_累計(万円)": round(total_burden / 10000, 1),
+        "【一括】所得税(万)": round(l_inc / 10000, 1),
+        "【一括】住民税(万)": round(l_res / 10000, 1),
+        "【一括】社保(万)": 0.0,
+        "【年金累計】所得税(万)": round(a_inc / 10000, 1),
+        "【年金累計】住民税(万)": round(a_res / 10000, 1),
+        "【年金累計】国保(万)": round(a_nhi / 10000, 1),
+        "【年金累計】介護(万)": round(a_care / 10000, 1),
+        "生データ_総負担": total_burden,
+        "適用ルール": rule
+    }
+
+# ==============================================================================
+# 実行ボタンと表示
+# ==============================================================================
+if st.button("最適解をシミュレーションする", type="primary"):
+    
+    if GAS_WEBHOOK_URL.startswith("http"):
+        try:
+            requests.post(GAS_WEBHOOK_URL, json={"action": "execute"}, timeout=2)
+        except:
+            pass
+
+    with st.spinner("全パターンの最適解を探索中..."):
+        mean_rate = mean_rate_pct / 100.0
+        plans = []
+        safe_limit_age = max(ideco_end, limit_age)
+
+        for age in range(ideco_end, safe_limit_age + 1):
+            for lr in [0.0, 0.25, 0.5, 0.75, 1.0]:
+                for dur in [5, 10, 15]:
+                    plans.append(run_evaluation(ideco_end, age, lr, dur, mean_rate))
+
+        df = pd.DataFrame(plans).drop_duplicates(subset=["受取開始年齢", "一時金割合", "年金期間", "総負担_累計(万円)"])
+        
+        max_burden_raw = df["生データ_総負担"].max()
+        df["節税額(万円)"] = round((max_burden_raw - df["生データ_総負担"]) / 10000, 1)
+
+        cols = [
+            "受取開始年齢", "一時金割合", "年金期間", "手取り率(%)", "総手取り(万円)", "総額面(万円)", "節税額(万円)", "総負担_累計(万円)", 
+            "【一括】所得税(万)", "【一括】住民税(万)", "【一括】社保(万)", 
+            "【年金累計】所得税(万)", "【年金累計】住民税(万)", "【年金累計】国保(万)", "【年金累計】介護(万)", "適用ルール"
+        ]
+
+        df_best_tax = df.sort_values(by="手取り率(%)", ascending=False).head(10).reset_index(drop=True)
+        df_best_tax.index += 1
+        
+        df_best_net = df.sort_values(by="総手取り(万円)", ascending=False).head(10).reset_index(drop=True)
+        df_best_net.index += 1
+
+        st.info("💡 ※税金・社会保険料および総手取り額は、受給期間（5年〜15年間）全体の**【トータル累計額】**を表示しています。")
+
+        st.subheader("🏆 【手取り率ベスト10】 (税金・社保の差し引きが最も少なく、効率よく手元に残る順)")
+        st.dataframe(df_best_tax[cols], use_container_width=True)
+
+        st.subheader("💰 【手取り額ベスト10】 (最終手元に残る金額が多い順：運用益込み)")
+        st.dataframe(df_best_net[cols], use_container_width=True)
