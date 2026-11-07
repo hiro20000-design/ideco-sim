@@ -34,7 +34,6 @@ st.sidebar.header("5. その他の収入設定")
 public_pension = st.sidebar.number_input("公的年金見込み年額 (円)", value=2400000, step=100000)
 wage_income = st.sidebar.number_input("退職後の給与等年額 (円)", value=0, step=100000)
 
-# 実行回数カウント用（空欄で問題ありません）
 GAS_WEBHOOK_URL = ""
 
 # ==============================================================================
@@ -180,14 +179,14 @@ def run_evaluation(c_end, target_age, l_ratio, ann_len, mean_r):
         "節税額(万円)": 0,
         "総手取り(万円)": round(total_net / 10000, 1),
         "手取り率(%)": round((total_net / total_gross) * 100, 2),
-        "総負担_計(万円)": round(total_burden / 10000, 1),
+        "総負担_累計(万円)": round(total_burden / 10000, 1),
         "【一括】所得税(万)": round(l_inc / 10000, 1),
         "【一括】住民税(万)": round(l_res / 10000, 1),
         "【一括】社保(万)": 0.0,
-        "【年金】所得税(万)": round(a_inc / 10000, 1),
-        "【年金】住民税(万)": round(a_res / 10000, 1),
-        "【年金】国保(万)": round(a_nhi / 10000, 1),
-        "【年金】介護(万)": round(a_care / 10000, 1),
+        "【年金累計】所得税(万)": round(a_inc / 10000, 1),
+        "【年金累計】住民税(万)": round(a_res / 10000, 1),
+        "【年金累計】国保(万)": round(a_nhi / 10000, 1),
+        "【年金累計】介護(万)": round(a_care / 10000, 1),
         "適用ルール": rule
     }
 
@@ -212,15 +211,15 @@ if st.button("最適解をシミュレーションする", type="primary"):
                 for dur in [5, 10, 15]:
                     plans.append(run_evaluation(ideco_end, age, lr, dur, mean_rate))
 
-        df = pd.DataFrame(plans).drop_duplicates(subset=["受取開始年齢", "一時金割合", "年金期間", "総負担_計(万円)"])
+        df = pd.DataFrame(plans).drop_duplicates(subset=["受取開始年齢", "一時金割合", "年金期間", "総負担_累計(万円)"])
         
         max_burden_raw = df["生データ_総負担"].max()
         df["節税額(万円)"] = round((max_burden_raw - df["生データ_総負担"]) / 10000, 1)
 
         cols = [
-            "受取開始年齢", "一時金割合", "年金期間", "総額面(万円)", "節税額(万円)", "総手取り(万円)", "手取り率(%)", "総負担_計(万円)", 
+            "受取開始年齢", "一時金割合", "年金期間", "総額面(万円)", "節税額(万円)", "総手取り(万円)", "手取り率(%)", "総負担_累計(万円)", 
             "【一括】所得税(万)", "【一括】住民税(万)", "【一括】社保(万)", 
-            "【年金】所得税(万)", "【年金】住民税(万)", "【年金】国保(万)", "【年金】介護(万)", "適用ルール"
+            "【年金累計】所得税(万)", "【年金累計】住民税(万)", "【年金累計】国保(万)", "【年金累計】介護(万)", "適用ルール"
         ]
 
         df_best_tax = df.sort_values(by="節税額(万円)", ascending=False).head(10).reset_index(drop=True)
@@ -228,6 +227,8 @@ if st.button("最適解をシミュレーションする", type="primary"):
         
         df_best_net = df.sort_values(by="総手取り(万円)", ascending=False).head(10).reset_index(drop=True)
         df_best_net.index += 1
+
+        st.info("💡 ※税金・社会保険料および総手取り額は、受給期間（5年〜15年間）全体の**【トータル累計額】**を表示しています。")
 
         st.subheader("🏆 【節税ベスト10】 (最悪ケースと比較して最も税金・社保を削減できた順)")
         st.dataframe(df_best_tax[cols], use_container_width=True)
